@@ -1,0 +1,226 @@
+diff --git a/ap.c b/ap.c
+index 649d6bf..43e6369 100644
+--- a/ap.c
++++ b/ap.c
+@@ -15,6 +15,8 @@
+ #include "bh.h"
+ #include "net/mac80211.h"
+ 
++#include <linux/version.h>
++
+ #define XRADIO_LINK_ID_GC_TIMEOUT        ((unsigned long)(10 * HZ))
+ #define XRADIO_ENABLE_ARP_FILTER_OFFLOAD  3
+ 
+@@ -213,7 +215,7 @@ static int xradio_set_tim_impl(struct xradio_vif *priv, bool aid0_bit_set)
+ 	ap_printk(XRADIO_DBG_MSG, "%s mcast: %s.\n", __func__, 
+ 	          aid0_bit_set ? "ena" : "dis");
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+ 	skb = ieee80211_beacon_get_tim(priv->hw, priv->vif, &tim_offset, &tim_length, 0);
+ #else
+ 	skb = ieee80211_beacon_get_tim(priv->hw, priv->vif, &tim_offset, &tim_length);
+@@ -353,7 +355,7 @@ static int xradio_set_btcoexinfo(struct xradio_vif *priv)
+ 	return ret;
+ }
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+ void xradio_bss_info_changed(struct ieee80211_hw *dev,
+ 			     struct ieee80211_vif *vif,
+ 			     struct ieee80211_bss_conf *info,
+@@ -367,7 +369,7 @@ void xradio_bss_info_changed(struct ieee80211_hw *dev,
+ {
+ 	struct xradio_common *hw_priv = dev->priv;
+ 	struct xradio_vif *priv = xrwl_get_vif_from_ieee80211(vif);
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+ 	struct ieee80211_vif_cfg *cfg = &vif->cfg;
+ #else
+ 	struct ieee80211_bss_conf *cfg = info;
+@@ -982,7 +984,7 @@ static int xradio_upload_beacon(struct xradio_vif *priv)
+ 	if (priv->vif->p2p || hw_priv->channel->band == NL80211_BAND_5GHZ)
+ 		frame.rate = WSM_TRANSMIT_RATE_6;
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+ 	frame.skb = ieee80211_beacon_get(priv->hw, priv->vif, 0);
+ #else
+ 	frame.skb = ieee80211_beacon_get(priv->hw, priv->vif);
+@@ -1145,7 +1147,7 @@ static int xradio_upload_null(struct xradio_vif *priv)
+ 		.rate = 0xFF,
+ 	};
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+ 	frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif, 0, false);
+ #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 17))
+ 	frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif, false);
+@@ -1592,7 +1594,7 @@ void xradio_ht_oper_update_work(struct work_struct *work)
+ 		.count = 1,
+ 	};
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+ 	skb = ieee80211_beacon_get(priv->hw, priv->vif, 0);
+ #else
+ 	skb = ieee80211_beacon_get(priv->hw, priv->vif);
+diff --git a/ap.h b/ap.h
+index 5b0c246..6e250ba 100644
+--- a/ap.h
++++ b/ap.h
+@@ -29,7 +29,7 @@ int xradio_sta_remove(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+ void xradio_sta_notify(struct ieee80211_hw *dev, struct ieee80211_vif *vif,
+ 		       enum sta_notify_cmd notify_cmd,
+ 		       struct ieee80211_sta *sta);
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+ void xradio_bss_info_changed(struct ieee80211_hw *dev,
+ 			     struct ieee80211_vif *vif,
+ 			     struct ieee80211_bss_conf *info,
+diff --git a/bh.c b/bh.c
+index 592fad2..7a8f8a5 100644
+--- a/bh.c
++++ b/bh.c
+@@ -565,7 +565,8 @@ static int xradio_bh_rx(struct xradio_common *hw_priv, u16* nextlen) {
+ 		goto out;
+ 	}
+ 
+-	ret = 1;
++	/* if *nextlen is 0, there are no more packets to receive */
++	ret = 1 && *nextlen;
+ 
+ out:
+ 	/* Reclaim the SKB buffer */
+@@ -753,13 +754,16 @@ static int xradio_bh(void *arg)
+ 	long status;
+ 
+ 	for (;;) {
+-		timeout = HZ / 30;
++		/* if we got awaken by interrupt last time, there is a good chance
++		* to receive more data soon. Use the shortest sleep time in case
++		* we miss an interrupt */
++		timeout = wake ? 1 : HZ / 30;
+ 
+ 		// wait for something to happen or a timeout
+ 		status = wait_event_interruptible_timeout(hw_priv->bh_wq, ( {
+-					wake = atomic_xchg(&hw_priv->bh_tx, 0);
+ 					term = kthread_should_stop();
+ 					suspend = atomic_read(&hw_priv->bh_suspend);
++                    wake = atomic_xchg(&hw_priv->bh_tx, 0);
+ 					(wake || term || suspend);}), timeout);
+ 
+ 		if (wake) {
+@@ -774,8 +778,17 @@ static int xradio_bh(void *arg)
+ 					hw_priv->bh_error, status);
+ 			break;
+ 		} else if (!status) {
++            /* wait timed out
++			* check if a late interrupt arrived in the last moment */
++			if (atomic_xchg(&hw_priv->bh_tx, 0))
++			{
++				wake = 1;
++				if(xradio_bh_exchange(hw_priv) < 0){
++				break;
++				}
++			}
+ 			/* check if there is data waiting but we missed the interrupt*/
+-			if (xradio_bh_rx_availlen(hw_priv) > 0) {
++			else if (xradio_bh_rx_availlen(hw_priv) > 0) {
+ 				dev_warn(hw_priv->pdev, "missed interrupt\n");
+ 				if(xradio_bh_exchange(hw_priv) < 0){
+ 					break;
+diff --git a/main.c b/main.c
+index 0798cea..f988025 100644
+--- a/main.c
++++ b/main.c
+@@ -162,7 +162,9 @@ static const struct ieee80211_ops xradio_ops = {
+ 	/* Intentionally not offloaded:					*/
+ 	/*.channel_switch	 = xradio_channel_switch,		*/
+ 	.remain_on_channel = xradio_remain_on_channel,
+-	.cancel_remain_on_channel = xradio_cancel_remain_on_channel,
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 19, 0))
++ 	.cancel_remain_on_channel = xradio_cancel_remain_on_channel,
++#endif
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0))
+ 	.wake_tx_queue		= ieee80211_handle_wake_tx_queue,
+ #endif 	
+@@ -509,6 +511,9 @@ int xradio_core_init(struct sdio_func* func)
+ 	unsigned char randomaddr[ETH_ALEN];
+ 	const unsigned char *addr = NULL;
+ #endif
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
++	u8 addr_buf[ETH_ALEN];
++#endif
+ 
+ 	//init xradio_common
+ 	dev = xradio_init_common(sizeof(struct xradio_common));
+@@ -533,7 +538,12 @@ int xradio_core_init(struct sdio_func* func)
+ #else
+ 	// fill in mac addresses
+ 	if (hw_priv->pdev->of_node) {
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
++		of_get_mac_address(hw_priv->pdev->of_node, addr_buf);
++		addr = addr_buf;
++#else
+ 		addr = of_get_mac_address(hw_priv->pdev->of_node);
++#endif
+ 	}
+ 	if (!addr) {
+ 		dev_warn(hw_priv->pdev, "no mac address provided, using random\n");
+diff --git a/sdio.c b/sdio.c
+index cdc3ae0..334544c 100644
+--- a/sdio.c
++++ b/sdio.c
+@@ -147,9 +147,10 @@ static int xradio_probe_of(struct sdio_func *func)
+ 	int irq;
+ 
+ 	of_id = of_match_node(xradio_sdio_of_match_table, np);
+-	if (!of_id)
++	if (!of_id) {
++		dev_err(dev, "SDIO: xradio,xr819 not found in DTS\n");
+ 		return -ENODEV;
+-
++	}
+ 	//pdev_data->family = of_id->data;
+ 
+ 	irq = irq_of_parse_and_map(np, 0);
+diff --git a/sta.c b/sta.c
+index d57cb55..52de0c3 100644
+--- a/sta.c
++++ b/sta.c
+@@ -663,7 +663,7 @@ void xradio_configure_filter(struct ieee80211_hw *hw,
+ 	}
+ }
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+ int xradio_conf_tx(struct ieee80211_hw *dev, struct ieee80211_vif *vif,
+                    unsigned int link_id, u16 queue,
+ 		   const struct ieee80211_tx_queue_params *params)
+diff --git a/sta.h b/sta.h
+index 884d9c7..87e4ca0 100644
+--- a/sta.h
++++ b/sta.h
+@@ -47,7 +47,7 @@ void xradio_configure_filter(struct ieee80211_hw *dev,
+                              unsigned int changed_flags,
+                              unsigned int *total_flags,
+                              u64 multicast);
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+ int xradio_conf_tx(struct ieee80211_hw *dev, struct ieee80211_vif *vif,
+                    unsigned int link_id, u16 queue,
+ 		   const struct ieee80211_tx_queue_params *params);
+diff --git a/wsm.c b/wsm.c
+index ea73770..d14ff65 100644
+--- a/wsm.c
++++ b/wsm.c
+@@ -2609,7 +2609,7 @@ static int xradio_get_prio_queue(struct xradio_vif *priv,
+ 		edca = &priv->edca.params[i];
+ 		score = ((edca->aifns + edca->cwMin) << 16) +
+ 				(edca->cwMax - edca->cwMin) *
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
+ 				(get_random_u32() & 0xFFFF);
+ #else
+ 				(prandom_u32() & 0xFFFF);
