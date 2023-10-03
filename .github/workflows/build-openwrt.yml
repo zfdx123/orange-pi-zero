@@ -18,6 +18,10 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: 'false'
+      clean:
+        description: '清理缓存'
+        required: false
+        default: 'false'
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
@@ -65,6 +69,7 @@ jobs:
       uses: klever1988/cachewrtbuild@main
       with:
         ccache: 'true'
+        clean: ${{  github.event.inputs.clean }}
         prefix: ${{ github.workspace }}/openwrt
 
     - name: Load custom feeds
