@@ -2,9 +2,9 @@
 
 mkdir package/myapp
 
-cp -rf $GITHUB_WORKSPACE/package/xradio package/myapp/xradio
+# cp -rf $GITHUB_WORKSPACE/package/xradio package/myapp/xradio
 
-cp -rf $GITHUB_WORKSPACE/kernelPatch/001-fix-wifi-xr819.patch target/linux/sunxi/patches-5.10/
+# cp -rf $GITHUB_WORKSPACE/kernelPatch/001-fix-wifi-xr819.patch target/linux/sunxi/patches-5.10/
 
 git clone --depth=1 https://github.com/kenzok78/luci-app-adguardhome package/myapp/luci-app-adguardhome
 git clone --depth=1 -b 18.06 https://github.com/jerrykuku/luci-theme-argon package/myapp/luci-theme-argon
