@@ -1,5 +1,5 @@
 diff --git a/arch/arm/boot/dts/sun8i-h2-plus-orangepi-zero.dts b/arch/arm/boot/dts/sun8i-h2-plus-orangepi-zero.dts
-index 3706216ffb40..25b0ce06a488 100644
+index 3706216ffb40..8c5fd63f00f1 100644
 --- a/arch/arm/boot/dts/sun8i-h2-plus-orangepi-zero.dts
 +++ b/arch/arm/boot/dts/sun8i-h2-plus-orangepi-zero.dts
 @@ -107,6 +107,8 @@ reg_vdd_cpux: vdd-cpux-regulator {
@@ -11,22 +11,7 @@ index 3706216ffb40..25b0ce06a488 100644
  		reset-gpios = <&r_pio 0 7 GPIO_ACTIVE_LOW>;
  		post-power-on-delay-ms = <200>;
  	};
-@@ -139,9 +141,13 @@ &mmc0 {
- };
- 
- &mmc1 {
--	vmmc-supply = <&reg_vcc_wifi>;
-+	pinctrl-names = "default";
-+	pinctrl-0 = <&mmc1_pins_a>;
-+	vmmc-supply = <&reg_vcc3v3>;
-+	vqmmc-supply = <&reg_vcc_wifi>;
- 	mmc-pwrseq = <&wifi_pwrseq>;
- 	bus-width = <4>;
-+	max-frequency = <16000000>;
- 	non-removable;
- 	status = "okay";
- 
-@@ -151,9 +157,34 @@ &mmc1 {
+@@ -151,6 +153,27 @@ &mmc1 {
  	 */
  	xr819: sdio_wifi@1 {
  		reg = <1>;
@@ -44,20 +29,13 @@ index 3706216ffb40..25b0ce06a488 100644
 +	wifi_wake: wifi_wake {
 +		pins = "PG10";
 +		function = "gpio_in";
- 	};
- };
- 
++	};
++};
++
 +&r_pio {
 +	wifi_rst: wifi_rst {
 +		pins = "PL7";
 +		function = "gpio_out";
-+	};
-+};
-+
-+&mmc1_pins_a {
-+	bias-pull-up;
-+};
-+
- &ohci0 {
- 	status = "okay";
+ 	};
  };
+ 
